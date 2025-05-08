@@ -1,4 +1,3 @@
-from datetime import datetime
 from model import connect_with_database
 import requests
 import pandas as pd

@@ -1,10 +1,8 @@
 from bs4 import BeautifulSoup
 from model import connect_with_database
-import pandas as pd
 import requests
 import re
 import json
-import io
 
 def fetch_vbc(html_response):
     soup = BeautifulSoup(html_response, 'html.parser')
