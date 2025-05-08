@@ -1,19 +1,19 @@
+from datetime import datetime
+from model import connect_with_database
 import requests
-import os
-import concurrent.futures
+import pandas as pd
+import io
 
-def download_file(session, url, filename, headers):
-    """Download a single file and save it to disk"""
-    response = session.get(url, headers=headers, allow_redirects=True)
-    
-    if response.status_code == 200:
-        with open(filename, 'wb') as f:
-            f.write(response.content)
-        return f"Successfully downloaded to {filename}"
-    else:
-        return f"Failed to download {filename}, status code: {response.status_code}"
+def download_and_parse(url, headers, session):
+    resp = session.get(url, headers=headers)
+    resp.raise_for_status()
+    csv_data = io.StringIO(resp.text)
+    output = pd.read_csv(csv_data)
+    return output
 
-def BSE_bhav_copy_download(date_str):
+def BSE_bhav_copy_download(date):
+    collection = connect_with_database()
+
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
         'Upgrade-Insecure-Requests': '1',
@@ -31,40 +31,25 @@ def BSE_bhav_copy_download(date_str):
     session.get("https://www.bseindia.com/markets/equity/EQReports/BhavCopyDebt.aspx", headers=headers)
     
     # Define download information
-    download_info = [
+    download_urls = [
         {
-            'url': f"https://www.bseindia.com/download/Bhavcopy/Derivative/MS_{date_str}-01.csv",
-            'filename': f"BSE_FnO_BhavCopy_{date_str}.csv",
+            'url': f"https://www.bseindia.com/download/Bhavcopy/Derivative/MS_{date}-01.csv",
+            'filename': f"BSE_FnO_BhavCopy_{date}.csv",
             'type': 'F&O'
         },
         {
-            'url': f"https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_{date_str}_F_0000.CSV",
-            'filename': f"BSE_Equity_BhavCopy_{date_str}.csv",
+            'url': f"https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_{date}_F_0000.CSV",
+            'filename': f"BSE_Equity_BhavCopy_{date}.csv",
             'type': 'Equity'
         }
     ]
-    
-    results = []
-    
-    # Download files in parallel
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [
-            executor.submit(download_file, session, info['url'], info['filename'], headers)
-            for info in download_info
-        ]
+
+    for url in download_urls:
+        downloaded_bhav_copy = download_and_parse(url.get("url"), headers, session)
+        collection.insert_many(downloaded_bhav_copy.to_dict(orient="records"))
         
-        for future, info in zip(concurrent.futures.as_completed(futures), download_info):
-            try:
-                result = future.result()
-                print(result)
-                results.append(result)
-            except Exception as e:
-                print(f"Error downloading {info['type']} bhav copy: {str(e)}")
-                results.append(f"Failed to download {info['type']} bhav copy: {str(e)}")
-    
-    return "BSE bhav copy download process completed."
+    return ":)"
 
 if __name__ == "__main__":
-    # Use the date from your example
-    date = "20250502"
-    BSE_bhav_copy_download(date)
+    NSE_bhav_copy = BSE_bhav_copy_download("20250505")
+    # print(NSE_bhav_copy)

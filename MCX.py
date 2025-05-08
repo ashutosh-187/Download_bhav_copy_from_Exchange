@@ -1,9 +1,10 @@
-import requests
-import os
 from bs4 import BeautifulSoup
+from model import connect_with_database
+import pandas as pd
+import requests
 import re
 import json
-import csv
+import io
 
 def fetch_vbc(html_response):
     soup = BeautifulSoup(html_response, 'html.parser')
@@ -21,6 +22,7 @@ def fetch_vbc(html_response):
 
 
 def MCX_bhav_copy_download(date):
+    collection = connect_with_database()
     headers = {
         "Accept": "application/json, text/javascript, */*; q=0.01",
         "Accept-Encoding": "gzip, deflate, br, zstd",
@@ -55,29 +57,10 @@ def MCX_bhav_copy_download(date):
 
     # Extract the JS literal string
     bhav_copy_str = fetch_vbc(response.text)
-
-    # Attempt to parse directly as JSON
-    try:
-        data = json.loads(bhav_copy_str)
-    except json.JSONDecodeError:
-        # Fallback: replace single quotes with double quotes
-        bhav_copy_clean = bhav_copy_str.replace("'", '"')
-        data = json.loads(bhav_copy_clean)
-
-    # Define output filename
-    filename = f"BhavCopy_MCX_FO_{date}.csv"
-
-    # Write to CSV
-    with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-        if not data:
-            raise RuntimeError('No data to write to CSV')
-        writer = csv.DictWriter(csvfile, fieldnames=data[0].keys())
-        writer.writeheader()
-        writer.writerows(data)
-
-    print(f"Successfully saved Bhav Copy to {filename}")
-    return filename
-
+    data = json.loads(bhav_copy_str)
+    collection.insert_many(data)
+    return ":)"
+    
 
 if __name__ == "__main__":
     # Example usage: download for May 5, 2025

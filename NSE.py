@@ -1,13 +1,28 @@
+from datetime import datetime
+from model import connect_with_database
 import requests
 import pandas as pd
-from datetime import datetime
 import zipfile
 import io
-import os
+
+def download_and_parse(url, headers, session):
+    resp = session.get(url, headers=headers)
+    resp.raise_for_status()
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
+        # find the one .csv in the archive
+        name = next(f for f in z.namelist() if f.endswith('.csv'))
+        # read it directly into pandas
+        with z.open(name) as csvfile:
+            # if it’s bytes, pandas.read_csv can consume it directly
+            return pd.read_csv(csvfile)
+    # in case something goes wrong
+    raise RuntimeError(f"No CSV found in {url}")
 
 def NSE_bhav_copy_download(date):
+    collection = connect_with_database()
+
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0',
         'Upgrade-Insecure-Requests': "1",
         "DNT": "1",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -16,56 +31,30 @@ def NSE_bhav_copy_download(date):
         'Connection': 'keep-alive'
     }
 
-    # Initialize session
     session = requests.Session()
-    session.get("http://nseindia.com", headers=headers)
-    
-    # Format date properly
+    session.get("https://www.nseindia.com", headers=headers)
+
+    # Ensure date is in YYYYMMDD
     input_date = datetime.strptime(date, "%Y%m%d")
     formatted_date = input_date.strftime("%Y%m%d")
-    
-    root_directory = os.path.dirname(os.path.abspath(__file__))
-    
-    # Download and extract FnO data
-    fno_url = f"https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{date}_F_0000.csv.zip"
-    print(f"Downloading FnO data from: {fno_url}")
-    
-    fno_response = requests.get(fno_url, headers=headers)
-    
-    # Extract CSV from zip data in memory (no zip file saved)
-    with zipfile.ZipFile(io.BytesIO(fno_response.content)) as zip_ref:
-        for file_info in zip_ref.infolist():
-            if file_info.filename.endswith('.csv'):
-                # Extract the CSV content
-                csv_content = zip_ref.read(file_info.filename)
-                
-                # Save only the CSV file
-                csv_path = os.path.join(root_directory, f"NSE_FnO_BhavCopy_{formatted_date}.csv")
-                with open(csv_path, 'wb') as f:
-                    f.write(csv_content)
-                print(f"Saved FnO CSV file to: {csv_path}")
-    
-    # Download and extract Equity data
-    equity_url = f"https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date}_F_0000.csv.zip"
-    print(f"Downloading Equity data from: {equity_url}")
-    
-    equity_response = requests.get(equity_url, headers=headers)
-    
-    # Extract CSV from zip data in memory (no zip file saved)
-    with zipfile.ZipFile(io.BytesIO(equity_response.content)) as zip_ref:
-        for file_info in zip_ref.infolist():
-            if file_info.filename.endswith('.csv'):
-                # Extract the CSV content
-                csv_content = zip_ref.read(file_info.filename)
-                
-                # Save only the CSV file
-                csv_path = os.path.join(root_directory, f"NSE_Equity_BhavCopy_{formatted_date}.csv")
-                with open(csv_path, 'wb') as f:
-                    f.write(csv_content)
-                print(f"Saved Equity CSV file to: {csv_path}")
-    
-    print("Successfully downloaded and extracted NSE bhav copy data")
-    return "Successfully downloaded and extracted NSE bhav copy data."
+
+    download_urls = {
+        "FnO":  (
+            f"https://nsearchives.nseindia.com/content/fo/"
+            f"BhavCopy_NSE_FO_0_0_0_{formatted_date}_F_0000.csv.zip"
+        ),
+        "Equity": (
+            f"https://nsearchives.nseindia.com/content/cm/"
+            f"BhavCopy_NSE_CM_0_0_0_{formatted_date}_F_0000.csv.zip"
+        )
+    }
+
+    for segment, url in download_urls.items():
+        downloaded_bhav_copy = download_and_parse(url, headers, session)
+        collection.insert_many(downloaded_bhav_copy.to_dict(orient="records"))
+
+    return ":)"
 
 if __name__ == "__main__":
-    NSE_bhav_copy_download("20250505")
+    NSE_bhav_copy = NSE_bhav_copy_download("20250505")
+    # print(NSE_bhav_copy)
